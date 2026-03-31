@@ -46,9 +46,9 @@ const ROOM_SLOTS = {
     { x: 77.8, y: 25.0, facing: 1 },
     { x: 87.0, y: 25.0, facing: -1 }
   ],
-  thau: [
-    { x: 18.2, y: 58.5, facing: 1 },
-    { x: 27.5, y: 58.5, facing: -1 }
+  relax: [
+    { x: 18.0, y: 58.5, facing: 1 },
+    { x: 28.0, y: 58.5, facing: -1 }
   ],
   redteam: [
     { x: 18.0, y: 82.0, facing: 1 },
@@ -58,15 +58,21 @@ const ROOM_SLOTS = {
     { x: 74.5, y: 69.2, facing: 1 },
     { x: 84.0, y: 69.2, facing: -1 }
   ],
-  saoffice: [
-    { x: 66.0, y: 90.0, facing: 1 },
-    { x: 78.0, y: 90.0, facing: -1 }
-  ],
   default: [
     { x: 50.0, y: 50.0, facing: 1 },
     { x: 56.0, y: 50.0, facing: -1 }
   ]
 };
+
+const STATUS_ZONE_RULES = [
+  { zone: 'warroom', keywords: ['critical', 'sev', 'incident', 'breach', 'war room', 'major', 'escalat', 'escalation', 'urgent', 'khan cap', 'su co', 'canh bao do', 'p1', 'p0'] },
+  { zone: 'redteam', keywords: ['redteam', 'red team', 'pentest', 'phishing', 'exploit', 'attack simulation', 'adversary', 'tlpt', 'xam nhap', 'tan cong', 'tấn công', 'recon'] },
+  { zone: 'defense', keywords: ['defense', 'soc', 'monitor', 'monitoring', 'siem', 'edr', 'blue team', 'va remediation', 'remediation', 'patch', 'hardening', 'vulnerability', 'defender', 'waf', 'firewall', 'logging', 'alert'] },
+  { zone: 'audit', keywords: ['audit', 'stage 2', 'stage2', 'evidence', 'checklist', 'internal audit', 'rehearsal', 'review', 'compliance review', 'assessment', 'attestation'] },
+  { zone: 'governance', keywords: ['governance', 'policy', 'risk', 'register', 'iso', 'isms', 'procedure', 'standard', 'compliance', 'owner', 'scope', 'soa', 'management review'] },
+  { zone: 'relax', keywords: ['idle', 'break', 'lunch', 'offline', 'oof', 'done', 'completed', 'completed task', 'waiting', 'standby', 'relax', 'rest', 'nghi', 'nghỉ', 'xong', 'roi', 'rồi'] }
+];
+
 
 bootstrap();
 
@@ -112,7 +118,7 @@ function renderSprites(positionedStaff) {
   const signature = JSON.stringify(
     positionedStaff.map((person) => ({
       id: person.id,
-      zoneId: person.zoneId,
+      zoneId: person.behaviorZoneId || person.zoneId,
       status: person.status,
       active: person.id === activeStaffId,
       x: person.targetX,
@@ -213,7 +219,7 @@ function assignRoomSlots(staff) {
   const grouped = new Map();
 
   for (const person of staff) {
-    const zoneKey = normalizeZoneId(person.zoneId);
+    const zoneKey = resolveBehaviorZone(person);
     if (!grouped.has(zoneKey)) grouped.set(zoneKey, []);
     grouped.get(zoneKey).push(person);
   }
@@ -229,9 +235,11 @@ function assignRoomSlots(staff) {
       const overflowRow = Math.floor(index / slots.length);
       const offsetY = overflowRow * 4.8;
       const offsetX = overflowRow * (index % 2 === 0 ? -2.4 : 2.4);
+      const behaviorZoneId = resolveBehaviorZone(person);
 
       positioned.push({
         ...person,
+        behaviorZoneId,
         roomSlotIndex: index % slots.length,
         targetX: slot.x + offsetX,
         targetY: slot.y + offsetY,
@@ -243,7 +251,36 @@ function assignRoomSlots(staff) {
   return positioned;
 }
 
-function normalizeZoneId(zoneId) {
+function resolveBehaviorZone(person) {
+  const explicitZone = normalizeZoneId(person.zoneId);
+  const project = projectForStaff(person.id);
+  const projectSignals = [
+    project?.name,
+    project?.type,
+    project?.stage,
+    project?.description,
+    project?.health,
+    project?.category
+  ].filter(Boolean).join(' | ');
+  const statusSignals = [
+    person.status,
+    person.role,
+    projectSignals
+  ].filter(Boolean).join(' | ');
+
+  const normalized = normalizeForMatch(statusSignals);
+
+  for (const rule of STATUS_ZONE_RULES) {
+    if (rule.keywords.some((keyword) => normalized.includes(normalizeForMatch(keyword)))) {
+      return rule.zone;
+    }
+  }
+
+  if (ROOM_SLOTS[explicitZone]) return explicitZone;
+  return project ? 'audit' : 'relax';
+}
+
+function normalizeZoneId(zoneId)(zoneId) {
   return String(zoneId || '')
     .toLowerCase()
     .normalize('NFD')
@@ -434,6 +471,7 @@ function renderStaffDetail() {
   }
 
   const zone = zoneForStaff(person);
+  const behaviorZone = zoneForStaff({ ...person, zoneId: resolveBehaviorZone(person) });
   const projects = state.projects.filter((item) => item.ownerId === person.id || item.contributors.includes(person.id));
   const latestMessage = state.messages.find((msg) => msg.from === person.id || msg.to === person.id);
 
@@ -449,10 +487,10 @@ function renderStaffDetail() {
     </div>
 
     <div class="meta-grid pixel-grid">
-      <div class="box"><span>Zone</span>${escapeHtml(zone.name || person.zoneId)}</div>
+      <div class="box"><span>Zone</span>${escapeHtml(behaviorZone.name || resolveBehaviorZone(person))}</div>
       <div class="box"><span>Projects</span>${projects.length}</div>
       <div class="box wide"><span>Status</span>${escapeHtml(person.status)}</div>
-      <div class="box wide"><span>Latest chat</span>${latestMessage ? formatDateTime(latestMessage.createdAt) : 'N/A'}</div>
+      <div class="box wide"><span>Manual zone</span>${escapeHtml(zone.name || person.zoneId)}</div>
     </div>
 
     <div class="project-tags">
@@ -604,7 +642,16 @@ async function api(path, options = {}) {
 }
 
 function zoneForStaff(person) {
-  return state.zones.find((item) => item.id === person.zoneId) || { x: 50, y: 50, name: person.zoneId };
+  const zoneId = normalizeZoneId(person.zoneId);
+  const builtinNames = {
+    governance: 'Governance',
+    audit: 'Audit',
+    defense: 'Defense',
+    redteam: 'Red Team',
+    warroom: 'War Room',
+    relax: 'Relax'
+  };
+  return state.zones.find((item) => normalizeZoneId(item.id) === zoneId) || { x: 50, y: 50, name: builtinNames[zoneId] || person.zoneId };
 }
 
 function projectForStaff(staffId) {
