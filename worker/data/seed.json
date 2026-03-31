@@ -1,0 +1,222 @@
+{
+  "meta": {
+    "workspaceName": "ATTT Project Office",
+    "lastUpdated": "2026-03-31T00:00:00.000Z",
+    "version": 1
+  },
+  "zones": [
+    { "id": "soc", "name": "SOC Desk", "x": 24, "y": 18 },
+    { "id": "warroom", "name": "War Room", "x": 50, "y": 22 },
+    { "id": "meeting", "name": "Meeting Table", "x": 50, "y": 72 },
+    { "id": "vault", "name": "Evidence Vault", "x": 78, "y": 74 },
+    { "id": "library", "name": "Policy Shelf", "x": 86, "y": 24 }
+  ],
+  "staff": [
+    {
+      "id": "phuc",
+      "name": "Phúc",
+      "role": "ISO 27001 Lead",
+      "color": "#5aa9ff",
+      "zoneId": "meeting",
+      "projectIds": ["p-iso-stage2", "p-mr-kpi"],
+      "status": "Đang điều phối rehearsal Audit Stage 2",
+      "avatar": "P"
+    },
+    {
+      "id": "phu",
+      "name": "Phú",
+      "role": "VA Coordinator",
+      "color": "#ffb84d",
+      "zoneId": "soc",
+      "projectIds": ["p-va-remediation"],
+      "status": "Đang cập nhật tiến độ xử lý lỗ hổng",
+      "avatar": "P"
+    },
+    {
+      "id": "an",
+      "name": "An",
+      "role": "Risk Analyst",
+      "color": "#6ddc8b",
+      "zoneId": "warroom",
+      "projectIds": ["p-risk-register", "p-vendor-review"],
+      "status": "Đang rà soát risk register và owner",
+      "avatar": "A"
+    },
+    {
+      "id": "thanh",
+      "name": "Thanh",
+      "role": "Pentest Follow-up",
+      "color": "#ff7ab6",
+      "zoneId": "vault",
+      "projectIds": ["p-pentest-tracking", "p-va-remediation"],
+      "status": "Đang thu thập evidence đóng điểm NC/OFI",
+      "avatar": "T"
+    },
+    {
+      "id": "tuan",
+      "name": "Tuấn",
+      "role": "Policy & Compliance",
+      "color": "#b38cff",
+      "zoneId": "library",
+      "projectIds": ["p-policy-refresh", "p-iso-stage2"],
+      "status": "Đang review policy, procedure và SoA",
+      "avatar": "T"
+    }
+  ],
+  "projects": [
+    {
+      "id": "p-iso-stage2",
+      "name": "ISO 27001:2022 Stage 2 Readiness",
+      "type": "Audit",
+      "stage": "Rehearsal",
+      "health": "On Track",
+      "ownerId": "phuc",
+      "contributors": ["tuan"],
+      "priority": "Critical",
+      "description": "Chuẩn bị interview, evidence và thống nhất narrative cho Audit Stage 2.",
+      "tasks": [
+        "Hoàn thiện rehearsal checklist cho Product / Finance / BD / IT Ops",
+        "Chuẩn hóa câu trả lời về scope, process interaction và governance",
+        "Theo dõi NC/OFI sau buổi audit"
+      ]
+    },
+    {
+      "id": "p-va-remediation",
+      "name": "VA Remediation Follow-up",
+      "type": "Vulnerability Management",
+      "stage": "Tracking",
+      "health": "At Risk",
+      "ownerId": "phu",
+      "contributors": ["thanh"],
+      "priority": "High",
+      "description": "Theo dõi trạng thái remediation và xác nhận bằng chứng đóng lỗ hổng.",
+      "tasks": [
+        "Cập nhật file Pentest_Summary_PointFinding_v1.1.xlsx",
+        "Đối chiếu severity / ETA / owner",
+        "Tổng hợp email follow-up gửi khách hàng"
+      ]
+    },
+    {
+      "id": "p-risk-register",
+      "name": "Risk Register Refresh",
+      "type": "Risk Management",
+      "stage": "Assessment",
+      "health": "On Track",
+      "ownerId": "an",
+      "contributors": ["phuc"],
+      "priority": "High",
+      "description": "Bổ sung Annex A mapping, risk owner, RTP và residual risk cho sổ đăng ký rủi ro.",
+      "tasks": [
+        "Rà soát risk IDs cho IT Ops / Legal / Finance / Product",
+        "Bổ sung cột Annex A control mapping",
+        "Chuẩn hóa owner và treatment plan"
+      ]
+    },
+    {
+      "id": "p-pentest-tracking",
+      "name": "Pentest Evidence Tracking",
+      "type": "Assessment",
+      "stage": "Evidence Collection",
+      "health": "On Track",
+      "ownerId": "thanh",
+      "contributors": ["phu"],
+      "priority": "High",
+      "description": "Tập trung vào bằng chứng chứng minh tiến độ xử lý và xác nhận khắc phục.",
+      "tasks": [
+        "Gom ảnh chụp bằng chứng remediation",
+        "Theo dõi due date theo từng finding",
+        "Chuẩn bị bản cập nhật gửi auditor / khách hàng"
+      ]
+    },
+    {
+      "id": "p-policy-refresh",
+      "name": "ISMS Policy & Procedure Refresh",
+      "type": "Compliance",
+      "stage": "Review",
+      "health": "Needs Attention",
+      "ownerId": "tuan",
+      "contributors": ["phuc", "an"],
+      "priority": "Medium",
+      "description": "Rà soát policy, procedure, standard và SoA để khớp phạm vi và cách diễn giải auditor-facing.",
+      "tasks": [
+        "Cập nhật wording cho GOV-001 scope",
+        "Rà soát remote working applicability trong SoA",
+        "Chốt version tài liệu cho rehearsal"
+      ]
+    },
+    {
+      "id": "p-mr-kpi",
+      "name": "Management Review KPI Clarification",
+      "type": "Governance",
+      "stage": "Improvement",
+      "health": "Needs Attention",
+      "ownerId": "phuc",
+      "contributors": ["an"],
+      "priority": "Medium",
+      "description": "Chuyển các mục tiêu ATTT từ định tính sang measurable KPI để phục vụ Management Review.",
+      "tasks": [
+        "Đề xuất KPI cho mục tiêu ATTT",
+        "Thống nhất tần suất đo lường và nguồn dữ liệu",
+        "Đưa nội dung vào biên bản MR"
+      ]
+    },
+    {
+      "id": "p-vendor-review",
+      "name": "Vendor Security Review",
+      "type": "Third-party Security",
+      "stage": "Assessment",
+      "health": "On Track",
+      "ownerId": "an",
+      "contributors": ["tuan"],
+      "priority": "Medium",
+      "description": "Rà soát vendor control, bằng chứng đánh giá và cập nhật vendor risk owner.",
+      "tasks": [
+        "Kiểm tra danh sách vendor trong phạm vi ISMS",
+        "Đối chiếu SLA / NDA / security clauses",
+        "Cập nhật trạng thái đánh giá định kỳ"
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "from": "phuc",
+      "to": "tuan",
+      "projectId": "p-iso-stage2",
+      "text": "Tuấn giúp mình chốt wording scope và process interaction trước rehearsal chiều nay nhé.",
+      "createdAt": "2026-03-31T08:10:00.000Z"
+    },
+    {
+      "id": "m2",
+      "from": "phu",
+      "to": "thanh",
+      "projectId": "p-va-remediation",
+      "text": "Thanh cập nhật giúp mình evidence remediation cho 3 finding severity High nhé.",
+      "createdAt": "2026-03-31T08:18:00.000Z"
+    },
+    {
+      "id": "m3",
+      "from": "an",
+      "to": "phuc",
+      "projectId": "p-risk-register",
+      "text": "Mình đã thêm cột Risk Owner và Annex A mapping vào risk register rồi.",
+      "createdAt": "2026-03-31T08:25:00.000Z"
+    },
+    {
+      "id": "m4",
+      "from": "thanh",
+      "to": "phu",
+      "projectId": "p-pentest-tracking",
+      "text": "Bằng chứng đóng điểm đã gom theo từng owner, chiều mình gửi bản tổng hợp mới.",
+      "createdAt": "2026-03-31T08:32:00.000Z"
+    },
+    {
+      "id": "m5",
+      "from": "tuan",
+      "to": "an",
+      "projectId": "p-policy-refresh",
+      "text": "An xem giúp mình phần remote work applicability trong SoA còn thiếu luận điểm nào không.",
+      "createdAt": "2026-03-31T08:40:00.000Z"
+    }
+  ]
+}

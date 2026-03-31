@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ATTT Project Office</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GitHub Pages + Cloudflare Worker</p>
+        <h1>ATTT Project Office</h1>
+        <p class="subtitle">Mô phỏng đội ngũ phụ trách các dự án An Toàn Thông Tin trên nền pixel office.</p>
+      </div>
+      <div class="topbar-actions">
+        <button id="simulateBtn" class="btn primary">Mô phỏng trao đổi</button>
+        <button id="refreshBtn" class="btn">Tải lại</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card office-card">
+        <div class="office-head">
+          <div>
+            <h2>Pixel Office</h2>
+            <p>Click vào từng nhân sự để xem dự án, trạng thái và hội thoại gần nhất.</p>
+          </div>
+          <div class="legend">
+            <span><i class="dot blue"></i> Audit / Governance</span>
+            <span><i class="dot orange"></i> VA / Pentest</span>
+            <span><i class="dot green"></i> Risk / Review</span>
+          </div>
+        </div>
+        <div class="office-stage" id="officeStage">
+          <img class="office-bg" src="./assets/office-layout.png" alt="Pixel office layout" />
+          <div id="spriteLayer"></div>
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <section class="card details-card">
+          <div class="section-head">
+            <h2>Thông tin nhân sự</h2>
+            <span id="lastUpdated" class="muted"></span>
+          </div>
+          <div id="staffDetail" class="staff-detail empty">Chọn một nhân sự trong bản đồ để xem chi tiết.</div>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>Dự án đang theo dõi</h2>
+            <span id="projectCount" class="pill"></span>
+          </div>
+          <div id="projectList" class="project-list"></div>
+        </section>
+
+        <section class="card admin-card">
+          <div class="section-head">
+            <h2>Cập nhật tay</h2>
+            <span class="muted">Gửi lên Worker</span>
+          </div>
+          <form id="adminForm" class="admin-form">
+            <label>
+              Nhân sự
+              <select id="staffSelect"></select>
+            </label>
+            <label>
+              Trạng thái
+              <input id="statusInput" type="text" placeholder="Ví dụ: Đang review evidence Stage 2" />
+            </label>
+            <label>
+              Zone
+              <select id="zoneSelect"></select>
+            </label>
+            <label>
+              Admin token
+              <input id="tokenInput" type="password" placeholder="Bearer token của Worker" />
+            </label>
+            <div class="actions-row">
+              <button class="btn primary" type="submit">Lưu trạng thái</button>
+              <button class="btn" id="resetBtn" type="button">Reset seed</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>Luồng trao đổi gần nhất</h2>
+            <span class="muted">Project collaboration</span>
+          </div>
+          <div id="messageList" class="message-list"></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    window.APP_CONFIG = {
+      API_BASE: 'https://YOUR-WORKER.your-subdomain.workers.dev'
+    };
+  </script>
+  <script src="./app.js"></script>
+</body>
+</html>

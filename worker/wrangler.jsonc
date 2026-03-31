@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "attt-office-worker",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-03-31",
+  "kv_namespaces": [
+    {
+      "binding": "OFFICE_KV",
+      "id": "YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+  "vars": {
+    "ADMIN_TOKEN": "CHANGE_ME"
+  }
+}
