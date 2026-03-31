@@ -25,6 +25,14 @@ let animationFrameId = 0;
 let animationStarted = false;
 let lastStaffSignature = '';
 
+const ADMIN_ZONES = [
+  { id: 'governance', name: 'governance' },
+  { id: 'audit', name: 'audit' },
+  { id: 'defense', name: 'defense' },
+  { id: 'redteam', name: 'redteam' },
+  { id: 'warroom', name: 'warroom' }
+];
+
 const ROOM_SLOTS = {
   governance: [
     { x: 18.2, y: 21.8, facing: 1 },
@@ -512,7 +520,7 @@ function renderStaffOptions() {
   if (!els.staffSelect || !els.zoneSelect) return;
   const currentStaff = els.staffSelect.value;
   els.staffSelect.innerHTML = state.staff.map((person) => `<option value="${person.id}">${person.name}</option>`).join('');
-  els.zoneSelect.innerHTML = state.zones.map((zone) => `<option value="${zone.id}">${zone.name}</option>`).join('');
+  els.zoneSelect.innerHTML = ADMIN_ZONES.map((zone) => `<option value="${zone.id}">${zone.name}</option>`).join('');
   els.staffSelect.value = currentStaff || activeStaffId || state.staff[0].id;
   syncAdminFields();
   els.staffSelect.onchange = syncAdminFields;
@@ -522,7 +530,10 @@ function syncAdminFields() {
   const person = state?.staff.find((item) => item.id === els.staffSelect.value);
   if (!person) return;
   if (els.statusInput) els.statusInput.value = person.status || '';
-  if (els.zoneSelect) els.zoneSelect.value = person.zoneId;
+  if (els.zoneSelect) {
+    const allowed = new Set(ADMIN_ZONES.map((z) => z.id));
+    els.zoneSelect.value = allowed.has(person.zoneId) ? person.zoneId : 'governance';
+  }
 }
 
 async function handleAdminSubmit(event) {
