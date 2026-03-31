@@ -30,7 +30,8 @@ const ADMIN_ZONES = [
   { id: 'audit', name: 'audit' },
   { id: 'defense', name: 'defense' },
   { id: 'redteam', name: 'redteam' },
-  { id: 'warroom', name: 'warroom' }
+  { id: 'warroom', name: 'warroom' },
+  { id: 'relax', name: 'relax' }
 ];
 
 const ROOM_SLOTS = {
@@ -192,7 +193,8 @@ function renderSprites(positionedStaff) {
           targetFacing: person.facing,
           moving: false,
           fallbackColor: person.color || '#79aefc',
-          roomSlotIndex: person.roomSlotIndex || 0
+          roomSlotIndex: person.roomSlotIndex || 0,
+          relaxPose: false
         };
         spriteState.set(person.id, sprite);
       }
@@ -201,9 +203,12 @@ function renderSprites(positionedStaff) {
       sprite.targetY = person.targetY;
       sprite.targetFacing = person.facing;
       sprite.roomSlotIndex = person.roomSlotIndex || 0;
+      sprite.relaxPose = (person.behaviorZoneId || person.zoneId) === 'relax';
       sprite.root.classList.toggle('active', person.id === activeStaffId);
       sprite.badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
+      sprite.root.dataset.zone = person.behaviorZoneId || person.zoneId || '';
       sprite.root.setAttribute('aria-label', `${person.name} - ${projectLabel(person.id)}`);
+      sprite.root.dataset.zone = person.behaviorZoneId || person.zoneId || '';
     });
 
     lastStaffSignature = signature;
@@ -213,6 +218,7 @@ function renderSprites(positionedStaff) {
       if (!sprite) return;
       sprite.root.classList.toggle('active', person.id === activeStaffId);
       sprite.badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
+      sprite.root.dataset.zone = person.behaviorZoneId || person.zoneId || '';
     });
   }
 }
@@ -382,12 +388,21 @@ function startSpriteLoop() {
         sprite.currentY = sprite.targetY;
       }
 
-      const facing = sprite.targetFacing || sprite.facing || 1;
+      const inRelax = sprite.relaxPose || (sprite.root.dataset.zone === 'relax');
+      const facing = inRelax
+        ? (sprite.roomSlotIndex === 0 ? 1 : -1)
+        : (sprite.targetFacing || sprite.facing || 1);
+
       sprite.facing = facing;
 
-      const bob = isMoving
-        ? Math.abs(Math.sin(t * 11 + sprite.wobbleOffset)) * 1.5
-        : Math.sin(t * 2.2 + sprite.wobbleOffset) * 1.2;
+      let bob = 0;
+      if (isMoving) {
+        bob = Math.abs(Math.sin(t * 11 + sprite.wobbleOffset)) * 1.5;
+      } else if (inRelax) {
+        bob = Math.sin(t * 1.3 + sprite.wobbleOffset) * 0.65;
+      } else {
+        bob = Math.sin(t * 2.2 + sprite.wobbleOffset) * 1.2;
+      }
 
       sprite.root.style.left = `${sprite.currentX}%`;
       sprite.root.style.top = `${sprite.currentY}%`;
@@ -396,12 +411,22 @@ function startSpriteLoop() {
       sprite.root.classList.toggle('moving', isMoving);
       sprite.root.classList.toggle('slot-left', sprite.roomSlotIndex === 0);
       sprite.root.classList.toggle('slot-right', sprite.roomSlotIndex === 1);
+      sprite.root.classList.toggle('is-relax', inRelax && !isMoving);
+      sprite.root.classList.toggle('is-idle', !isMoving);
 
       if (!entry) return;
       if (entry.failed) {
-        drawFallbackSprite(sprite.canvas, sprite.fallbackColor, facing < 0);
+        drawFallbackSprite(sprite.canvas, sprite.fallbackColor, facing < 0, inRelax && !isMoving);
       } else if (!entry.loading) {
-        drawCompositeToCanvas(entry, sprite.canvas, t + sprite.wobbleOffset, isMoving, sprite.fallbackColor, facing < 0);
+        drawCompositeToCanvas(
+          entry,
+          sprite.canvas,
+          t + sprite.wobbleOffset,
+          isMoving,
+          sprite.fallbackColor,
+          facing < 0,
+          inRelax && !isMoving
+        );
       }
     });
 
@@ -414,7 +439,7 @@ function startSpriteLoop() {
   }, { once: true });
 }
 
-function drawCompositeToCanvas(entry, canvas, t, isMoving, fallbackColor, flip = false) {
+function drawCompositeToCanvas(entry, canvas, t, isMoving, fallbackColor, flip = false, relaxPose = false) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
@@ -424,7 +449,7 @@ function drawCompositeToCanvas(entry, canvas, t, isMoving, fallbackColor, flip =
     return;
   }
 
-  const frame = resolveFrameIndex(entry.frameCount, t, isMoving);
+  const frame = resolveFrameIndex(entry.frameCount, t, isMoving, relaxPose);
   const sx = frame * entry.frameWidth;
   const sy = 0;
 
@@ -451,19 +476,20 @@ function drawCompositeToCanvas(entry, canvas, t, isMoving, fallbackColor, flip =
   if (flip) ctx.restore();
 }
 
-function resolveFrameIndex(frameCount, t, isMoving) {
+function resolveFrameIndex(frameCount, t, isMoving, relaxPose = false) {
   if (frameCount <= 1) return 0;
 
   if (frameCount >= 12) {
     if (isMoving) return Math.floor(t * 9) % Math.min(frameCount, 8);
+    if (relaxPose) return Math.min(frameCount - 1, 9 + (Math.floor(t * 1.2) % Math.max(1, frameCount - 9)));
     return 8 + (Math.floor(t * 2.5) % Math.max(1, frameCount - 8));
   }
 
-  const fps = isMoving ? 7 : 2.5;
+  const fps = isMoving ? 7 : (relaxPose ? 1.2 : 2.5);
   return Math.floor(t * fps) % frameCount;
 }
 
-function drawFallbackSprite(canvas, color = '#79aefc', flip = false) {
+function drawFallbackSprite(canvas, color = '#79aefc', flip = false, relaxPose = false) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
@@ -481,8 +507,15 @@ function drawFallbackSprite(canvas, color = '#79aefc', flip = false) {
   ctx.fillStyle = color;
   ctx.fillRect(8, 13, 16, 11);
   ctx.fillStyle = '#0c1118';
-  ctx.fillRect(11, 24, 4, 6);
-  ctx.fillRect(17, 24, 4, 6);
+  if (relaxPose) {
+    ctx.fillRect(10, 24, 5, 5);
+    ctx.fillRect(16, 22, 6, 7);
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(4, 18, 6, 2);   // cue stick vibe
+  } else {
+    ctx.fillRect(11, 24, 4, 6);
+    ctx.fillRect(17, 24, 4, 6);
+  }
 
   if (flip) ctx.restore();
 }
