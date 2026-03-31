@@ -252,38 +252,24 @@ function assignRoomSlots(staff) {
 }
 
 function resolveBehaviorZone(person) {
-  const explicitZone = normalizeZoneId(person.zoneId);
+  // nếu user chọn zone → ưu tiên luôn
+  if (person.zoneId) return person.zoneId;
+
   const project = projectForStaff(person.id);
 
-  const projectSignals = [
-    project?.name,
-    project?.type,
-    project?.stage,
-    project?.description,
-    project?.health,
-    project?.category
-  ]
-    .filter(Boolean)
-    .join(' | ');
-
-  const statusSignals = [
+  const text = [
     person.status,
-    person.role,
-    projectSignals
-  ]
-    .filter(Boolean)
-    .join(' | ');
+    project?.name
+  ].join(' ').toLowerCase();
 
-  const normalized = normalizeForMatch(statusSignals);
+  if (text.includes('incident')) return 'warroom';
+  if (text.includes('pentest')) return 'redteam';
+  if (text.includes('audit')) return 'audit';
+  if (text.includes('soc')) return 'defense';
+  if (text.includes('policy')) return 'governance';
+  if (text.includes('idle')) return 'relax';
 
-  for (const rule of STATUS_ZONE_RULES) {
-    if (rule.keywords.some((keyword) => normalized.includes(normalizeForMatch(keyword)))) {
-      return rule.zone;
-    }
-  }
-
-  if (ROOM_SLOTS[explicitZone]) return explicitZone;
-  return project ? 'audit' : 'relax';
+  return 'relax';
 }
 
 function normalizeZoneId(zoneId) {
