@@ -252,24 +252,49 @@ function assignRoomSlots(staff) {
 }
 
 function resolveBehaviorZone(person) {
-  // nếu user chọn zone → ưu tiên luôn
-  if (person.zoneId) return person.zoneId;
+  const explicitZone = normalizeZoneId(person.zoneId);
+  const manualZones = new Set(ADMIN_ZONES.map((z) => z.id));
+
+  // MANUAL OVERRIDE MODE:
+  // Nếu zoneId nằm trong danh sách zone admin thì ưu tiên dùng ngay.
+  // Có thể ép về auto mode tạm thời bằng cách thêm [auto] vào status.
+  const statusText = String(person.status || '');
+  const forceAuto = /\[auto\]/i.test(statusText);
+
+  if (!forceAuto && manualZones.has(explicitZone)) {
+    return explicitZone;
+  }
 
   const project = projectForStaff(person.id);
 
-  const text = [
+  const projectSignals = [
+    project?.name,
+    project?.type,
+    project?.stage,
+    project?.description,
+    project?.health,
+    project?.category
+  ]
+    .filter(Boolean)
+    .join(' | ');
+
+  const statusSignals = [
     person.status,
-    project?.name
-  ].join(' ').toLowerCase();
+    person.role,
+    projectSignals
+  ]
+    .filter(Boolean)
+    .join(' | ');
 
-  if (text.includes('incident')) return 'warroom';
-  if (text.includes('pentest')) return 'redteam';
-  if (text.includes('audit')) return 'audit';
-  if (text.includes('soc')) return 'defense';
-  if (text.includes('policy')) return 'governance';
-  if (text.includes('idle')) return 'relax';
+  const normalized = normalizeForMatch(statusSignals);
 
-  return 'relax';
+  for (const rule of STATUS_ZONE_RULES) {
+    if (rule.keywords.some((keyword) => normalized.includes(normalizeForMatch(keyword)))) {
+      return rule.zone;
+    }
+  }
+
+  return project ? 'audit' : 'relax';
 }
 
 function normalizeZoneId(zoneId) {
