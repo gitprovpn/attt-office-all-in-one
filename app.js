@@ -23,7 +23,42 @@ let state = null;
 let activeStaffId = null;
 let animationFrameId = 0;
 let animationStarted = false;
-let lastRenderSignature = '';
+let lastStaffSignature = '';
+
+const ROOM_SLOTS = {
+  governance: [
+    { x: 18.2, y: 21.8, facing: 1 },
+    { x: 27.3, y: 21.8, facing: -1 }
+  ],
+  audit: [
+    { x: 43.6, y: 24.5, facing: 1 },
+    { x: 55.6, y: 24.5, facing: -1 }
+  ],
+  defense: [
+    { x: 77.8, y: 25.0, facing: 1 },
+    { x: 87.0, y: 25.0, facing: -1 }
+  ],
+  thau: [
+    { x: 18.2, y: 58.5, facing: 1 },
+    { x: 27.5, y: 58.5, facing: -1 }
+  ],
+  redteam: [
+    { x: 18.0, y: 82.0, facing: 1 },
+    { x: 27.8, y: 82.0, facing: -1 }
+  ],
+  warroom: [
+    { x: 74.5, y: 69.2, facing: 1 },
+    { x: 84.0, y: 69.2, facing: -1 }
+  ],
+  saoffice: [
+    { x: 66.0, y: 90.0, facing: 1 },
+    { x: 78.0, y: 90.0, facing: -1 }
+  ],
+  default: [
+    { x: 50.0, y: 50.0, facing: 1 },
+    { x: 56.0, y: 50.0, facing: -1 }
+  ]
+};
 
 bootstrap();
 
@@ -34,10 +69,10 @@ async function bootstrap() {
 }
 
 function bindEvents() {
-  els.refreshBtn.addEventListener('click', loadState);
-  els.simulateBtn.addEventListener('click', handleSimulate);
-  els.resetBtn.addEventListener('click', handleReset);
-  els.adminForm.addEventListener('submit', handleAdminSubmit);
+  els.refreshBtn?.addEventListener('click', loadState);
+  els.simulateBtn?.addEventListener('click', handleSimulate);
+  els.resetBtn?.addEventListener('click', handleReset);
+  els.adminForm?.addEventListener('submit', handleAdminSubmit);
 }
 
 async function loadState() {
@@ -47,106 +82,172 @@ async function loadState() {
     if (!activeStaffId && state.staff.length) activeStaffId = state.staff[0].id;
     render();
   } catch (error) {
-    els.staffDetail.innerHTML = `<div class="status-bad">Không tải được dữ liệu từ Worker: ${escapeHtml(error.message)}</div>`;
+    if (els.staffDetail) {
+      els.staffDetail.innerHTML = `<div class="status-bad">Không tải được dữ liệu từ Worker: ${escapeHtml(error.message)}</div>`;
+    }
   }
 }
 
 function render() {
-  renderSprites();
+  if (!state) return;
+  const positioned = assignRoomSlots(state.staff);
+  renderSprites(positioned);
   renderStaffOptions();
   renderProjectList();
   renderMessages();
   renderStaffDetail();
-  els.projectCount.textContent = `${state.projects.length} dự án`;
-  els.lastUpdated.textContent = `Updated: ${formatDateTime(state.meta.lastUpdated)}`;
+  if (els.projectCount) els.projectCount.textContent = `${state.projects.length} dự án`;
+  if (els.lastUpdated) els.lastUpdated.textContent = `Updated: ${formatDateTime(state.meta.lastUpdated)}`;
 }
 
-function renderSprites() {
+function renderSprites(positionedStaff) {
   const signature = JSON.stringify(
-    state.staff.map((person) => ({
+    positionedStaff.map((person) => ({
       id: person.id,
       zoneId: person.zoneId,
       status: person.status,
       active: person.id === activeStaffId,
+      x: person.targetX,
+      y: person.targetY,
+      facing: person.facing,
       project: projectForStaff(person.id)?.id || ''
     }))
   );
 
-  if (signature !== lastRenderSignature) {
-    els.spriteLayer.innerHTML = '';
-    spriteState.clear();
+  if (signature !== lastStaffSignature) {
+    const existingIds = new Set(positionedStaff.map((p) => p.id));
 
-    state.staff.forEach((person, index) => {
-      const zone = zoneForStaff(person);
-      const root = document.createElement('button');
-      root.type = 'button';
-      root.className = `agent-sprite ${person.id === activeStaffId ? 'active' : ''}`;
-      root.dataset.staffId = person.id;
-      root.style.left = `calc(${zone.x}% + ${zoneOffsetX(index)}px)`;
-      root.style.top = `calc(${zone.y}% + ${zoneOffsetY(index)}px)`;
-
-      const badge = document.createElement('div');
-      badge.className = 'agent-badge';
-      badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
-
-      const shadow = document.createElement('div');
-      shadow.className = 'agent-shadow';
-
-      const canvasWrap = document.createElement('div');
-      canvasWrap.className = 'agent-canvas-wrap';
-
-      const canvas = document.createElement('canvas');
-      canvas.width = 32;
-      canvas.height = 32;
-      canvas.className = 'agent-canvas';
-      canvasWrap.appendChild(canvas);
-
-      const pin = document.createElement('div');
-      pin.className = 'agent-pin';
-      pin.style.setProperty('--agent-accent', person.color || '#79aefc');
-
-      root.appendChild(badge);
-      root.appendChild(canvasWrap);
-      root.appendChild(shadow);
-      root.appendChild(pin);
-      els.spriteLayer.appendChild(root);
-
-      root.addEventListener('click', () => {
-        activeStaffId = person.id;
-        render();
-      });
-
-      prepareSprite(person.id, canvas, person.color);
-
-      spriteState.set(person.id, {
-        canvas,
-        root,
-        wobbleOffset: index * 0.55,
-        accent: person.color || '#79aefc',
-        fallbackColor: person.color || '#79aefc'
-      });
+    spriteState.forEach((sprite, id) => {
+      if (!existingIds.has(id)) {
+        sprite.root.remove();
+        spriteState.delete(id);
+      }
     });
 
-    lastRenderSignature = signature;
-  } else {
-    state.staff.forEach((person) => {
-      const node = els.spriteLayer.querySelector(`[data-staff-id="${person.id}"]`);
-      if (!node) return;
-      node.classList.toggle('active', person.id === activeStaffId);
-      const badge = node.querySelector('.agent-badge');
-      if (badge) {
-        badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
+    positionedStaff.forEach((person, index) => {
+      let sprite = spriteState.get(person.id);
+      if (!sprite) {
+        const root = document.createElement('button');
+        root.type = 'button';
+        root.className = `agent-sprite ${person.id === activeStaffId ? 'active' : ''}`;
+        root.dataset.staffId = person.id;
+        root.style.left = `${person.targetX}%`;
+        root.style.top = `${person.targetY}%`;
+
+        const badge = document.createElement('div');
+        badge.className = 'agent-badge';
+
+        const canvasWrap = document.createElement('div');
+        canvasWrap.className = 'agent-canvas-wrap';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        canvas.className = 'agent-canvas';
+        canvasWrap.appendChild(canvas);
+
+        const shadow = document.createElement('div');
+        shadow.className = 'agent-shadow';
+
+        root.appendChild(badge);
+        root.appendChild(canvasWrap);
+        root.appendChild(shadow);
+        els.spriteLayer?.appendChild(root);
+
+        root.addEventListener('click', () => {
+          activeStaffId = person.id;
+          render();
+        });
+
+        prepareSprite(person.id, canvas, person.color || '#79aefc');
+
+        sprite = {
+          id: person.id,
+          canvas,
+          root,
+          badge,
+          shadow,
+          wobbleOffset: index * 0.47,
+          currentX: person.targetX,
+          currentY: person.targetY,
+          targetX: person.targetX,
+          targetY: person.targetY,
+          facing: person.facing,
+          targetFacing: person.facing,
+          moving: false,
+          fallbackColor: person.color || '#79aefc',
+          roomSlotIndex: person.roomSlotIndex || 0
+        };
+        spriteState.set(person.id, sprite);
       }
+
+      sprite.targetX = person.targetX;
+      sprite.targetY = person.targetY;
+      sprite.targetFacing = person.facing;
+      sprite.roomSlotIndex = person.roomSlotIndex || 0;
+      sprite.root.classList.toggle('active', person.id === activeStaffId);
+      sprite.badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
+      sprite.root.setAttribute('aria-label', `${person.name} - ${projectLabel(person.id)}`);
+    });
+
+    lastStaffSignature = signature;
+  } else {
+    positionedStaff.forEach((person) => {
+      const sprite = spriteState.get(person.id);
+      if (!sprite) return;
+      sprite.root.classList.toggle('active', person.id === activeStaffId);
+      sprite.badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
     });
   }
 }
 
+function assignRoomSlots(staff) {
+  const grouped = new Map();
+
+  for (const person of staff) {
+    const zoneKey = normalizeZoneId(person.zoneId);
+    if (!grouped.has(zoneKey)) grouped.set(zoneKey, []);
+    grouped.get(zoneKey).push(person);
+  }
+
+  const positioned = [];
+
+  for (const [zoneKey, people] of grouped.entries()) {
+    const slots = ROOM_SLOTS[zoneKey] || ROOM_SLOTS.default;
+    const sortedPeople = [...people].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+
+    sortedPeople.forEach((person, index) => {
+      const slot = slots[index % slots.length] || ROOM_SLOTS.default[0];
+      const overflowRow = Math.floor(index / slots.length);
+      const offsetY = overflowRow * 4.8;
+      const offsetX = overflowRow * (index % 2 === 0 ? -2.4 : 2.4);
+
+      positioned.push({
+        ...person,
+        roomSlotIndex: index % slots.length,
+        targetX: slot.x + offsetX,
+        targetY: slot.y + offsetY,
+        facing: slot.facing
+      });
+    });
+  }
+
+  return positioned;
+}
+
+function normalizeZoneId(zoneId) {
+  return String(zoneId || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function prepareSprite(staffId, canvas, fallbackColor) {
-  const key = staffId;
-  const existing = spriteCache.get(key);
+  const existing = spriteCache.get(staffId);
   if (existing) {
     existing.canvases.add(canvas);
-    if (!existing.loading) drawCompositeToCanvas(existing, canvas, performance.now() / 1000, fallbackColor);
+    if (!existing.loading) drawCompositeToCanvas(existing, canvas, 0, false, fallbackColor);
     return existing;
   }
 
@@ -162,7 +263,7 @@ function prepareSprite(staffId, canvas, fallbackColor) {
     failed: false,
     fallbackColor
   };
-  spriteCache.set(key, entry);
+  spriteCache.set(staffId, entry);
 
   const files = ['body.png', 'outfit.png', 'hair.png'];
   Promise.all(files.map((file) => loadImage(`${entry.basePath}/${file}`)))
@@ -175,12 +276,12 @@ function prepareSprite(staffId, canvas, fallbackColor) {
       entry.frameHeight = base.height;
       entry.loading = false;
       entry.failed = false;
-      entry.canvases.forEach((item) => drawCompositeToCanvas(entry, item, performance.now() / 1000, fallbackColor));
+      entry.canvases.forEach((item) => drawCompositeToCanvas(entry, item, 0, false, fallbackColor));
     })
     .catch(() => {
       entry.loading = false;
       entry.failed = true;
-      entry.canvases.forEach((item) => drawFallbackSprite(item, fallbackColor));
+      entry.canvases.forEach((item) => drawFallbackSprite(item, fallbackColor, false));
     });
 
   return entry;
@@ -192,17 +293,45 @@ function startSpriteLoop() {
 
   const tick = (ts) => {
     const t = ts / 1000;
+
     spriteState.forEach((sprite, staffId) => {
       const entry = spriteCache.get(staffId);
-      if (!entry) return;
-      if (entry.failed) {
-        drawFallbackSprite(sprite.canvas, sprite.fallbackColor);
-      } else if (!entry.loading) {
-        drawCompositeToCanvas(entry, sprite.canvas, t + sprite.wobbleOffset, sprite.fallbackColor);
+      const dx = sprite.targetX - sprite.currentX;
+      const dy = sprite.targetY - sprite.currentY;
+      const distance = Math.hypot(dx, dy);
+      const isMoving = distance > 0.05;
+      sprite.moving = isMoving;
+
+      if (isMoving) {
+        const smooth = Math.min(0.16, 0.09 + distance * 0.035);
+        sprite.currentX += dx * smooth;
+        sprite.currentY += dy * smooth;
+      } else {
+        sprite.currentX = sprite.targetX;
+        sprite.currentY = sprite.targetY;
       }
 
-      const hop = Math.sin(t * 2.1 + sprite.wobbleOffset) * 2;
-      sprite.root.style.transform = `translate(-50%, -50%) translateY(${hop.toFixed(2)}px)`;
+      const facing = sprite.targetFacing || sprite.facing || 1;
+      sprite.facing = facing;
+
+      const bob = isMoving
+        ? Math.abs(Math.sin(t * 11 + sprite.wobbleOffset)) * 1.5
+        : Math.sin(t * 2.2 + sprite.wobbleOffset) * 1.2;
+
+      sprite.root.style.left = `${sprite.currentX}%`;
+      sprite.root.style.top = `${sprite.currentY}%`;
+      sprite.root.style.setProperty('--sprite-bob', `${bob.toFixed(2)}px`);
+      sprite.root.style.setProperty('--sprite-flip', facing < 0 ? -1 : 1);
+      sprite.root.classList.toggle('moving', isMoving);
+      sprite.root.classList.toggle('slot-left', sprite.roomSlotIndex === 0);
+      sprite.root.classList.toggle('slot-right', sprite.roomSlotIndex === 1);
+
+      if (!entry) return;
+      if (entry.failed) {
+        drawFallbackSprite(sprite.canvas, sprite.fallbackColor, facing < 0);
+      } else if (!entry.loading) {
+        drawCompositeToCanvas(entry, sprite.canvas, t + sprite.wobbleOffset, isMoving, sprite.fallbackColor, facing < 0);
+      }
     });
 
     animationFrameId = window.requestAnimationFrame(tick);
@@ -214,19 +343,25 @@ function startSpriteLoop() {
   }, { once: true });
 }
 
-function drawCompositeToCanvas(entry, canvas, t, fallbackColor) {
+function drawCompositeToCanvas(entry, canvas, t, isMoving, fallbackColor, flip = false) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
 
   if (!entry.layers.length) {
-    drawFallbackSprite(canvas, fallbackColor);
+    drawFallbackSprite(canvas, fallbackColor, flip);
     return;
   }
 
-  const frame = resolveFrameIndex(entry.frameCount, t);
+  const frame = resolveFrameIndex(entry.frameCount, t, isMoving);
   const sx = frame * entry.frameWidth;
   const sy = 0;
+
+  if (flip) {
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.translate(-canvas.width, 0);
+  }
 
   for (const img of entry.layers) {
     ctx.drawImage(
@@ -241,19 +376,34 @@ function drawCompositeToCanvas(entry, canvas, t, fallbackColor) {
       canvas.height
     );
   }
+
+  if (flip) ctx.restore();
 }
 
-function resolveFrameIndex(frameCount, t) {
+function resolveFrameIndex(frameCount, t, isMoving) {
   if (frameCount <= 1) return 0;
-  const fps = frameCount >= 8 ? 7 : 4;
-  const index = Math.floor(t * fps) % frameCount;
-  return index;
+
+  if (frameCount >= 12) {
+    if (isMoving) {
+      return Math.floor(t * 9) % Math.min(frameCount, 8);
+    }
+    return 8 + (Math.floor(t * 2.5) % Math.max(1, frameCount - 8));
+  }
+
+  const fps = isMoving ? 7 : 2.5;
+  return Math.floor(t * fps) % frameCount;
 }
 
-function drawFallbackSprite(canvas, color = '#79aefc') {
+function drawFallbackSprite(canvas, color = '#79aefc', flip = false) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
+
+  if (flip) {
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.translate(-canvas.width, 0);
+  }
 
   ctx.fillStyle = '#121c2a';
   ctx.fillRect(10, 3, 12, 9);
@@ -264,27 +414,14 @@ function drawFallbackSprite(canvas, color = '#79aefc') {
   ctx.fillStyle = '#0c1118';
   ctx.fillRect(11, 24, 4, 6);
   ctx.fillRect(17, 24, 4, 6);
-}
 
-function zoneForStaff(person) {
-  const zone = state.zones.find((item) => item.id === person.zoneId);
-  return zone || { x: 50, y: 50, name: person.zoneId };
-}
-
-function zoneOffsetX(index) {
-  const pattern = [-14, 12, -10, 10, -6, 8];
-  return pattern[index % pattern.length];
-}
-
-function zoneOffsetY(index) {
-  const pattern = [8, -4, 5, -8, 10, -6];
-  return pattern[index % pattern.length];
+  if (flip) ctx.restore();
 }
 
 function renderStaffDetail() {
-  const person = state.staff.find((item) => item.id === activeStaffId);
-  if (!person) {
-    els.staffDetail.textContent = 'Không có dữ liệu nhân sự.';
+  const person = state?.staff.find((item) => item.id === activeStaffId);
+  if (!person || !els.staffDetail) {
+    if (els.staffDetail) els.staffDetail.textContent = 'Không có dữ liệu nhân sự.';
     return;
   }
 
@@ -294,7 +431,7 @@ function renderStaffDetail() {
 
   els.staffDetail.innerHTML = `
     <div class="detail-hero">
-      <div class="detail-sprite-preview" style="--agent-accent:${escapeHtml(person.color || '#79aefc')}">
+      <div class="detail-sprite-preview">
         <canvas id="detailPreviewCanvas" width="32" height="32"></canvas>
       </div>
       <div>
@@ -327,6 +464,7 @@ function renderStaffDetail() {
 }
 
 function renderProjectList() {
+  if (!els.projectList) return;
   els.projectList.innerHTML = state.projects.map((project) => {
     const owner = state.staff.find((item) => item.id === project.ownerId);
     const contributors = project.contributors
@@ -352,6 +490,7 @@ function renderProjectList() {
 }
 
 function renderMessages() {
+  if (!els.messageList) return;
   els.messageList.innerHTML = state.messages.slice(0, 8).map((message) => {
     const from = state.staff.find((item) => item.id === message.from);
     const to = state.staff.find((item) => item.id === message.to);
@@ -370,6 +509,7 @@ function renderMessages() {
 }
 
 function renderStaffOptions() {
+  if (!els.staffSelect || !els.zoneSelect) return;
   const currentStaff = els.staffSelect.value;
   els.staffSelect.innerHTML = state.staff.map((person) => `<option value="${person.id}">${person.name}</option>`).join('');
   els.zoneSelect.innerHTML = state.zones.map((zone) => `<option value="${zone.id}">${zone.name}</option>`).join('');
@@ -379,10 +519,10 @@ function renderStaffOptions() {
 }
 
 function syncAdminFields() {
-  const person = state.staff.find((item) => item.id === els.staffSelect.value);
+  const person = state?.staff.find((item) => item.id === els.staffSelect.value);
   if (!person) return;
-  els.statusInput.value = person.status || '';
-  els.zoneSelect.value = person.zoneId;
+  if (els.statusInput) els.statusInput.value = person.status || '';
+  if (els.zoneSelect) els.zoneSelect.value = person.zoneId;
 }
 
 async function handleAdminSubmit(event) {
@@ -399,9 +539,8 @@ async function handleAdminSubmit(event) {
       headers: authHeaders(),
       body: JSON.stringify(payload)
     });
-    await loadState();
     activeStaffId = payload.id;
-    render();
+    await loadState();
   } catch (error) {
     alert(`Lưu thất bại: ${error.message}`);
   }
@@ -436,7 +575,7 @@ async function handleReset() {
 
 function authHeaders() {
   const headers = { 'Content-Type': 'application/json' };
-  const token = els.tokenInput.value.trim();
+  const token = els.tokenInput?.value.trim();
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }
@@ -451,6 +590,10 @@ async function api(path, options = {}) {
     throw new Error(data.error || `HTTP ${response.status}`);
   }
   return data;
+}
+
+function zoneForStaff(person) {
+  return state.zones.find((item) => item.id === person.zoneId) || { x: 50, y: 50, name: person.zoneId };
 }
 
 function projectForStaff(staffId) {
