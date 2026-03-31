@@ -17,14 +17,20 @@ const els = {
   resetBtn: document.getElementById('resetBtn')
 };
 
+const spriteCache = new Map();
+const spriteState = new Map();
 let state = null;
 let activeStaffId = null;
+let animationFrameId = 0;
+let animationStarted = false;
+let lastRenderSignature = '';
 
 bootstrap();
 
 async function bootstrap() {
   bindEvents();
   await loadState();
+  startSpriteLoop();
 }
 
 function bindEvents() {
@@ -56,30 +62,223 @@ function render() {
 }
 
 function renderSprites() {
-  const zoneMap = Object.fromEntries(state.zones.map((zone) => [zone.id, zone]));
-  els.spriteLayer.innerHTML = state.staff.map((person, index) => {
-    const zone = zoneMap[person.zoneId] || { x: 50, y: 50 };
-    const offset = (index % 2 === 0 ? -1 : 1) * 1.6;
-    const top = `calc(${zone.y}% + ${offset}px)`;
-    const left = `calc(${zone.x}% + ${offset * 2}px)`;
-    const project = state.projects.find((item) => item.ownerId === person.id || item.contributors.includes(person.id));
-    const labelProject = project ? project.name : 'Chưa gán dự án';
-    return `
-      <button class="sprite ${person.id === activeStaffId ? 'active' : ''}" data-staff-id="${person.id}" style="top:${top};left:${left}">
-        <div class="sprite-label"><strong>${escapeHtml(person.name)}</strong>${escapeHtml(labelProject)}</div>
-        <div class="sprite-body" style="background:${person.color}"></div>
-      </button>
-    `;
-  }).join('');
+  const signature = JSON.stringify(
+    state.staff.map((person) => ({
+      id: person.id,
+      zoneId: person.zoneId,
+      status: person.status,
+      active: person.id === activeStaffId,
+      project: projectForStaff(person.id)?.id || ''
+    }))
+  );
 
-  els.spriteLayer.querySelectorAll('.sprite').forEach((node) => {
-    node.addEventListener('click', () => {
-      activeStaffId = node.dataset.staffId;
-      renderSprites();
-      renderStaffDetail();
-      els.staffSelect.value = activeStaffId;
+  if (signature !== lastRenderSignature) {
+    els.spriteLayer.innerHTML = '';
+    spriteState.clear();
+
+    state.staff.forEach((person, index) => {
+      const zone = zoneForStaff(person);
+      const root = document.createElement('button');
+      root.type = 'button';
+      root.className = `agent-sprite ${person.id === activeStaffId ? 'active' : ''}`;
+      root.dataset.staffId = person.id;
+      root.style.left = `calc(${zone.x}% + ${zoneOffsetX(index)}px)`;
+      root.style.top = `calc(${zone.y}% + ${zoneOffsetY(index)}px)`;
+
+      const badge = document.createElement('div');
+      badge.className = 'agent-badge';
+      badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
+
+      const shadow = document.createElement('div');
+      shadow.className = 'agent-shadow';
+
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'agent-canvas-wrap';
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      canvas.className = 'agent-canvas';
+      canvasWrap.appendChild(canvas);
+
+      const pin = document.createElement('div');
+      pin.className = 'agent-pin';
+      pin.style.setProperty('--agent-accent', person.color || '#79aefc');
+
+      root.appendChild(badge);
+      root.appendChild(canvasWrap);
+      root.appendChild(shadow);
+      root.appendChild(pin);
+      els.spriteLayer.appendChild(root);
+
+      root.addEventListener('click', () => {
+        activeStaffId = person.id;
+        render();
+      });
+
+      prepareSprite(person.id, canvas, person.color);
+
+      spriteState.set(person.id, {
+        canvas,
+        root,
+        wobbleOffset: index * 0.55,
+        accent: person.color || '#79aefc',
+        fallbackColor: person.color || '#79aefc'
+      });
     });
-  });
+
+    lastRenderSignature = signature;
+  } else {
+    state.staff.forEach((person) => {
+      const node = els.spriteLayer.querySelector(`[data-staff-id="${person.id}"]`);
+      if (!node) return;
+      node.classList.toggle('active', person.id === activeStaffId);
+      const badge = node.querySelector('.agent-badge');
+      if (badge) {
+        badge.innerHTML = `<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(projectLabel(person.id))}</span>`;
+      }
+    });
+  }
+}
+
+function prepareSprite(staffId, canvas, fallbackColor) {
+  const key = staffId;
+  const existing = spriteCache.get(key);
+  if (existing) {
+    existing.canvases.add(canvas);
+    if (!existing.loading) drawCompositeToCanvas(existing, canvas, performance.now() / 1000, fallbackColor);
+    return existing;
+  }
+
+  const entry = {
+    id: staffId,
+    basePath: `./assets/experts/${staffId}`,
+    layers: [],
+    canvases: new Set([canvas]),
+    frameCount: 1,
+    frameWidth: 32,
+    frameHeight: 32,
+    loading: true,
+    failed: false,
+    fallbackColor
+  };
+  spriteCache.set(key, entry);
+
+  const files = ['body.png', 'outfit.png', 'hair.png'];
+  Promise.all(files.map((file) => loadImage(`${entry.basePath}/${file}`)))
+    .then((images) => {
+      entry.layers = images;
+      const base = images[0];
+      const frameCount = base.width > base.height ? Math.max(1, Math.round(base.width / base.height)) : 1;
+      entry.frameCount = frameCount;
+      entry.frameWidth = Math.max(1, Math.floor(base.width / frameCount));
+      entry.frameHeight = base.height;
+      entry.loading = false;
+      entry.failed = false;
+      entry.canvases.forEach((item) => drawCompositeToCanvas(entry, item, performance.now() / 1000, fallbackColor));
+    })
+    .catch(() => {
+      entry.loading = false;
+      entry.failed = true;
+      entry.canvases.forEach((item) => drawFallbackSprite(item, fallbackColor));
+    });
+
+  return entry;
+}
+
+function startSpriteLoop() {
+  if (animationStarted) return;
+  animationStarted = true;
+
+  const tick = (ts) => {
+    const t = ts / 1000;
+    spriteState.forEach((sprite, staffId) => {
+      const entry = spriteCache.get(staffId);
+      if (!entry) return;
+      if (entry.failed) {
+        drawFallbackSprite(sprite.canvas, sprite.fallbackColor);
+      } else if (!entry.loading) {
+        drawCompositeToCanvas(entry, sprite.canvas, t + sprite.wobbleOffset, sprite.fallbackColor);
+      }
+
+      const hop = Math.sin(t * 2.1 + sprite.wobbleOffset) * 2;
+      sprite.root.style.transform = `translate(-50%, -50%) translateY(${hop.toFixed(2)}px)`;
+    });
+
+    animationFrameId = window.requestAnimationFrame(tick);
+  };
+
+  animationFrameId = window.requestAnimationFrame(tick);
+  window.addEventListener('beforeunload', () => {
+    if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+  }, { once: true });
+}
+
+function drawCompositeToCanvas(entry, canvas, t, fallbackColor) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+
+  if (!entry.layers.length) {
+    drawFallbackSprite(canvas, fallbackColor);
+    return;
+  }
+
+  const frame = resolveFrameIndex(entry.frameCount, t);
+  const sx = frame * entry.frameWidth;
+  const sy = 0;
+
+  for (const img of entry.layers) {
+    ctx.drawImage(
+      img,
+      sx,
+      sy,
+      entry.frameWidth,
+      entry.frameHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+  }
+}
+
+function resolveFrameIndex(frameCount, t) {
+  if (frameCount <= 1) return 0;
+  const fps = frameCount >= 8 ? 7 : 4;
+  const index = Math.floor(t * fps) % frameCount;
+  return index;
+}
+
+function drawFallbackSprite(canvas, color = '#79aefc') {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+
+  ctx.fillStyle = '#121c2a';
+  ctx.fillRect(10, 3, 12, 9);
+  ctx.fillStyle = '#e6c7ab';
+  ctx.fillRect(11, 4, 10, 8);
+  ctx.fillStyle = color;
+  ctx.fillRect(8, 13, 16, 11);
+  ctx.fillStyle = '#0c1118';
+  ctx.fillRect(11, 24, 4, 6);
+  ctx.fillRect(17, 24, 4, 6);
+}
+
+function zoneForStaff(person) {
+  const zone = state.zones.find((item) => item.id === person.zoneId);
+  return zone || { x: 50, y: 50, name: person.zoneId };
+}
+
+function zoneOffsetX(index) {
+  const pattern = [-14, 12, -10, 10, -6, 8];
+  return pattern[index % pattern.length];
+}
+
+function zoneOffsetY(index) {
+  const pattern = [8, -4, 5, -8, 10, -6];
+  return pattern[index % pattern.length];
 }
 
 function renderStaffDetail() {
@@ -88,42 +287,64 @@ function renderStaffDetail() {
     els.staffDetail.textContent = 'Không có dữ liệu nhân sự.';
     return;
   }
-  const zone = state.zones.find((item) => item.id === person.zoneId);
+
+  const zone = zoneForStaff(person);
   const projects = state.projects.filter((item) => item.ownerId === person.id || item.contributors.includes(person.id));
   const latestMessage = state.messages.find((msg) => msg.from === person.id || msg.to === person.id);
+
   els.staffDetail.innerHTML = `
-    <div class="staff-name">
-      <div class="avatar" style="background:${person.color}">${escapeHtml(person.avatar || person.name[0])}</div>
+    <div class="detail-hero">
+      <div class="detail-sprite-preview" style="--agent-accent:${escapeHtml(person.color || '#79aefc')}">
+        <canvas id="detailPreviewCanvas" width="32" height="32"></canvas>
+      </div>
       <div>
         <h3>${escapeHtml(person.name)}</h3>
         <div class="muted">${escapeHtml(person.role)}</div>
       </div>
     </div>
-    <div class="meta-grid">
-      <div class="box"><span>Zone</span>${escapeHtml(zone ? zone.name : person.zoneId)}</div>
+
+    <div class="meta-grid pixel-grid">
+      <div class="box"><span>Zone</span>${escapeHtml(zone.name || person.zoneId)}</div>
       <div class="box"><span>Projects</span>${projects.length}</div>
-      <div class="box"><span>Status</span>${escapeHtml(person.status)}</div>
-      <div class="box"><span>Latest chat</span>${latestMessage ? formatDateTime(latestMessage.createdAt) : 'N/A'}</div>
+      <div class="box wide"><span>Status</span>${escapeHtml(person.status)}</div>
+      <div class="box wide"><span>Latest chat</span>${latestMessage ? formatDateTime(latestMessage.createdAt) : 'N/A'}</div>
     </div>
+
     <div class="project-tags">
       ${projects.map((project) => `<span class="tag">${escapeHtml(project.name)}</span>`).join('') || '<span class="tag">Chưa có dự án</span>'}
     </div>
-    ${latestMessage ? `<div class="project-item" style="margin-top:12px;"><h3>Trao đổi gần nhất</h3><p>${escapeHtml(latestMessage.text)}</p></div>` : ''}
+
+    ${latestMessage ? `
+      <div class="message-card focus-card">
+        <div class="message-card-head">Trao đổi gần nhất</div>
+        <p>${escapeHtml(latestMessage.text)}</p>
+      </div>
+    ` : ''}
   `;
+
+  const previewCanvas = document.getElementById('detailPreviewCanvas');
+  if (previewCanvas) prepareSprite(person.id, previewCanvas, person.color || '#79aefc');
 }
 
 function renderProjectList() {
   els.projectList.innerHTML = state.projects.map((project) => {
     const owner = state.staff.find((item) => item.id === project.ownerId);
+    const contributors = project.contributors
+      .map((id) => state.staff.find((item) => item.id === id)?.name || id)
+      .join(', ');
+
     return `
-      <article class="project-item">
-        <h3>${escapeHtml(project.name)}</h3>
+      <article class="project-card">
+        <div class="project-card-head">
+          <h3>${escapeHtml(project.name)}</h3>
+          <span class="tag ${healthClass(project.health)}">${escapeHtml(project.health)}</span>
+        </div>
         <p>${escapeHtml(project.description)}</p>
         <div class="project-meta">
           <span class="tag">Owner: ${escapeHtml(owner ? owner.name : project.ownerId)}</span>
           <span class="tag">${escapeHtml(project.type)}</span>
           <span class="tag">${escapeHtml(project.stage)}</span>
-          <span class="tag ${healthClass(project.health)}">${escapeHtml(project.health)}</span>
+          ${contributors ? `<span class="tag">PIC: ${escapeHtml(contributors)}</span>` : ''}
         </div>
       </article>
     `;
@@ -136,10 +357,10 @@ function renderMessages() {
     const to = state.staff.find((item) => item.id === message.to);
     const project = state.projects.find((item) => item.id === message.projectId);
     return `
-      <article class="message-item">
+      <article class="message-card">
+        <div class="message-card-head">${escapeHtml(from ? from.name : message.from)} → ${escapeHtml(to ? to.name : message.to)}</div>
         <p>${escapeHtml(message.text)}</p>
         <div class="message-meta">
-          <span class="tag">${escapeHtml(from ? from.name : message.from)} → ${escapeHtml(to ? to.name : message.to)}</span>
           <span class="tag">${escapeHtml(project ? project.name : message.projectId)}</span>
           <span class="tag">${formatDateTime(message.createdAt)}</span>
         </div>
@@ -171,6 +392,7 @@ async function handleAdminSubmit(event) {
     status: els.statusInput.value.trim(),
     zoneId: els.zoneSelect.value
   };
+
   try {
     await api('/api/staff', {
       method: 'POST',
@@ -221,7 +443,7 @@ function authHeaders() {
 
 async function api(path, options = {}) {
   if (!API_BASE || API_BASE.includes('YOUR-WORKER')) {
-    throw new Error('Chưa cấu hình API_BASE trong frontend/index.html');
+    throw new Error('Chưa cấu hình API_BASE trong index.html');
   }
   const response = await fetch(`${API_BASE}${path}`, options);
   const data = await response.json().catch(() => ({}));
@@ -229,6 +451,15 @@ async function api(path, options = {}) {
     throw new Error(data.error || `HTTP ${response.status}`);
   }
   return data;
+}
+
+function projectForStaff(staffId) {
+  return state.projects.find((item) => item.ownerId === staffId || item.contributors.includes(staffId));
+}
+
+function projectLabel(staffId) {
+  const project = projectForStaff(staffId);
+  return project ? project.name : 'Chưa gán dự án';
 }
 
 function formatDateTime(value) {
@@ -250,4 +481,13 @@ function healthClass(health) {
   if (normalized.includes('risk')) return 'status-risk';
   if (normalized.includes('attention')) return 'status-bad';
   return 'status-good';
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 }
