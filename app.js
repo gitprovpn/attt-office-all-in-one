@@ -73,7 +73,6 @@ const STATUS_ZONE_RULES = [
   { zone: 'relax', keywords: ['idle', 'break', 'lunch', 'offline', 'oof', 'done', 'completed', 'completed task', 'waiting', 'standby', 'relax', 'rest', 'nghi', 'nghỉ', 'xong', 'roi', 'rồi'] }
 ];
 
-
 bootstrap();
 
 async function bootstrap() {
@@ -111,10 +110,12 @@ function render() {
   renderMessages();
   renderStaffDetail();
   if (els.projectCount) els.projectCount.textContent = `${state.projects.length} dự án`;
-  if (els.lastUpdated) els.lastUpdated.textContent = `Updated: ${formatDateTime(state.meta.lastUpdated)}`;
+  if (els.lastUpdated) els.lastUpdated.textContent = `Updated: ${formatDateTime(state.meta?.lastUpdated)}`;
 }
 
 function renderSprites(positionedStaff) {
+  if (!els.spriteLayer) return;
+
   const signature = JSON.stringify(
     positionedStaff.map((person) => ({
       id: person.id,
@@ -140,6 +141,7 @@ function renderSprites(positionedStaff) {
 
     positionedStaff.forEach((person, index) => {
       let sprite = spriteState.get(person.id);
+
       if (!sprite) {
         const root = document.createElement('button');
         root.type = 'button';
@@ -166,7 +168,7 @@ function renderSprites(positionedStaff) {
         root.appendChild(badge);
         root.appendChild(canvasWrap);
         root.appendChild(shadow);
-        els.spriteLayer?.appendChild(root);
+        els.spriteLayer.appendChild(root);
 
         root.addEventListener('click', () => {
           activeStaffId = person.id;
@@ -221,25 +223,26 @@ function assignRoomSlots(staff) {
   for (const person of staff) {
     const zoneKey = resolveBehaviorZone(person);
     if (!grouped.has(zoneKey)) grouped.set(zoneKey, []);
-    grouped.get(zoneKey).push(person);
+    grouped.get(zoneKey).push({ ...person, behaviorZoneId: zoneKey });
   }
 
   const positioned = [];
 
   for (const [zoneKey, people] of grouped.entries()) {
     const slots = ROOM_SLOTS[zoneKey] || ROOM_SLOTS.default;
-    const sortedPeople = [...people].sort((a, b) =>
-      a.name.localeCompare(b.name, 'vi')
-    );
+    const sortedPeople = [...people].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 
     sortedPeople.forEach((person, index) => {
       const slot = slots[index % slots.length] || ROOM_SLOTS.default[0];
+      const overflowRow = Math.floor(index / slots.length);
+      const offsetY = overflowRow * 4.8;
+      const offsetX = overflowRow * (index % 2 === 0 ? -2.4 : 2.4);
 
       positioned.push({
         ...person,
         roomSlotIndex: index % slots.length,
-        targetX: slot.x,
-        targetY: slot.y,
+        targetX: slot.x + offsetX,
+        targetY: slot.y + offsetY,
         facing: slot.facing
       });
     });
@@ -249,60 +252,9 @@ function assignRoomSlots(staff) {
 }
 
 function resolveBehaviorZone(person) {
-  const project = projectForStaff(person.id);
-
-  const text = [
-    person.status,
-    project?.name,
-    project?.type,
-    project?.stage,
-    project?.description,
-    project?.health
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  // 🔴 WAR ROOM
-  if (/(critical|incident|sev|urgent|breach|p1|p0)/.test(text)) {
-    return 'warroom';
-  }
-
-  // 🟥 RED TEAM
-  if (/(pentest|redteam|attack|exploit|phishing)/.test(text)) {
-    return 'redteam';
-  }
-
-  // 🛡 DEFENSE
-  if (/(soc|monitor|remediation|vulnerability|siem|edr)/.test(text)) {
-    return 'defense';
-  }
-
-  // 📋 AUDIT
-  if (/(audit|stage ?2|evidence|checklist|review)/.test(text)) {
-    return 'audit';
-  }
-
-  // 🧠 GOVERNANCE
-  if (/(policy|risk|iso|isms|procedure|soa)/.test(text)) {
-    return 'governance';
-  }
-
-  // 🟢 RELAX
-  if (/(idle|done|waiting|break|relax|nghi|xong)/.test(text)) {
-    return 'relax';
-  }
-
-  // fallback
-  return person.zoneId || 'relax';
-}
-
-  return positioned;
-}
-
-function resolveBehaviorZone(person) {
   const explicitZone = normalizeZoneId(person.zoneId);
   const project = projectForStaff(person.id);
+
   const projectSignals = [
     project?.name,
     project?.type,
@@ -310,12 +262,17 @@ function resolveBehaviorZone(person) {
     project?.description,
     project?.health,
     project?.category
-  ].filter(Boolean).join(' | ');
+  ]
+    .filter(Boolean)
+    .join(' | ');
+
   const statusSignals = [
     person.status,
     person.role,
     projectSignals
-  ].filter(Boolean).join(' | ');
+  ]
+    .filter(Boolean)
+    .join(' | ');
 
   const normalized = normalizeForMatch(statusSignals);
 
@@ -329,12 +286,21 @@ function resolveBehaviorZone(person) {
   return project ? 'audit' : 'relax';
 }
 
-function normalizeZoneId(zoneId)(zoneId) {
+function normalizeZoneId(zoneId) {
   return String(zoneId || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeForMatch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 function prepareSprite(staffId, canvas, fallbackColor) {
@@ -478,9 +444,7 @@ function resolveFrameIndex(frameCount, t, isMoving) {
   if (frameCount <= 1) return 0;
 
   if (frameCount >= 12) {
-    if (isMoving) {
-      return Math.floor(t * 9) % Math.min(frameCount, 8);
-    }
+    if (isMoving) return Math.floor(t * 9) % Math.min(frameCount, 8);
     return 8 + (Math.floor(t * 2.5) % Math.max(1, frameCount - 8));
   }
 
@@ -519,7 +483,7 @@ function renderStaffDetail() {
     return;
   }
 
-  const zone = zoneForStaff(person);
+  const manualZone = zoneForStaff(person);
   const behaviorZone = zoneForStaff({ ...person, zoneId: resolveBehaviorZone(person) });
   const projects = state.projects.filter((item) => item.ownerId === person.id || item.contributors.includes(person.id));
   const latestMessage = state.messages.find((msg) => msg.from === person.id || msg.to === person.id);
@@ -531,15 +495,15 @@ function renderStaffDetail() {
       </div>
       <div>
         <h3>${escapeHtml(person.name)}</h3>
-        <div class="muted">${escapeHtml(person.role)}</div>
+        <div class="muted">${escapeHtml(person.role || '')}</div>
       </div>
     </div>
 
     <div class="meta-grid pixel-grid">
       <div class="box"><span>Zone</span>${escapeHtml(behaviorZone.name || resolveBehaviorZone(person))}</div>
       <div class="box"><span>Projects</span>${projects.length}</div>
-      <div class="box wide"><span>Status</span>${escapeHtml(person.status)}</div>
-      <div class="box wide"><span>Manual zone</span>${escapeHtml(zone.name || person.zoneId)}</div>
+      <div class="box wide"><span>Status</span>${escapeHtml(person.status || '')}</div>
+      <div class="box wide"><span>Manual zone</span>${escapeHtml(manualZone.name || person.zoneId || '')}</div>
     </div>
 
     <div class="project-tags">
@@ -559,24 +523,27 @@ function renderStaffDetail() {
 }
 
 function renderProjectList() {
-  if (!els.projectList) return;
+  if (!els.projectList || !state) return;
+
   els.projectList.innerHTML = state.projects.map((project) => {
     const owner = state.staff.find((item) => item.id === project.ownerId);
-    const contributors = project.contributors
-      .map((id) => state.staff.find((item) => item.id === id)?.name || id)
-      .join(', ');
+    const contributors = Array.isArray(project.contributors)
+      ? project.contributors
+          .map((id) => state.staff.find((item) => item.id === id)?.name || id)
+          .join(', ')
+      : '';
 
     return `
       <article class="project-card">
         <div class="project-card-head">
           <h3>${escapeHtml(project.name)}</h3>
-          <span class="tag ${healthClass(project.health)}">${escapeHtml(project.health)}</span>
+          <span class="tag ${healthClass(project.health)}">${escapeHtml(project.health || 'Normal')}</span>
         </div>
-        <p>${escapeHtml(project.description)}</p>
+        <p>${escapeHtml(project.description || '')}</p>
         <div class="project-meta">
-          <span class="tag">Owner: ${escapeHtml(owner ? owner.name : project.ownerId)}</span>
-          <span class="tag">${escapeHtml(project.type)}</span>
-          <span class="tag">${escapeHtml(project.stage)}</span>
+          <span class="tag">Owner: ${escapeHtml(owner ? owner.name : project.ownerId || 'N/A')}</span>
+          ${project.type ? `<span class="tag">${escapeHtml(project.type)}</span>` : ''}
+          ${project.stage ? `<span class="tag">${escapeHtml(project.stage)}</span>` : ''}
           ${contributors ? `<span class="tag">PIC: ${escapeHtml(contributors)}</span>` : ''}
         </div>
       </article>
@@ -585,17 +552,19 @@ function renderProjectList() {
 }
 
 function renderMessages() {
-  if (!els.messageList) return;
+  if (!els.messageList || !state) return;
+
   els.messageList.innerHTML = state.messages.slice(0, 8).map((message) => {
     const from = state.staff.find((item) => item.id === message.from);
     const to = state.staff.find((item) => item.id === message.to);
     const project = state.projects.find((item) => item.id === message.projectId);
+
     return `
       <article class="message-card">
         <div class="message-card-head">${escapeHtml(from ? from.name : message.from)} → ${escapeHtml(to ? to.name : message.to)}</div>
-        <p>${escapeHtml(message.text)}</p>
+        <p>${escapeHtml(message.text || '')}</p>
         <div class="message-meta">
-          <span class="tag">${escapeHtml(project ? project.name : message.projectId)}</span>
+          ${project ? `<span class="tag">${escapeHtml(project.name)}</span>` : ''}
           <span class="tag">${formatDateTime(message.createdAt)}</span>
         </div>
       </article>
@@ -604,18 +573,20 @@ function renderMessages() {
 }
 
 function renderStaffOptions() {
-  if (!els.staffSelect || !els.zoneSelect) return;
+  if (!els.staffSelect || !els.zoneSelect || !state) return;
+
   const currentStaff = els.staffSelect.value;
   els.staffSelect.innerHTML = state.staff.map((person) => `<option value="${person.id}">${person.name}</option>`).join('');
   els.zoneSelect.innerHTML = ADMIN_ZONES.map((zone) => `<option value="${zone.id}">${zone.name}</option>`).join('');
-  els.staffSelect.value = currentStaff || activeStaffId || state.staff[0].id;
+  els.staffSelect.value = currentStaff || activeStaffId || state.staff[0]?.id || '';
   syncAdminFields();
   els.staffSelect.onchange = syncAdminFields;
 }
 
 function syncAdminFields() {
-  const person = state?.staff.find((item) => item.id === els.staffSelect.value);
+  const person = state?.staff.find((item) => item.id === els.staffSelect?.value);
   if (!person) return;
+
   if (els.statusInput) els.statusInput.value = person.status || '';
   if (els.zoneSelect) {
     const allowed = new Set(ADMIN_ZONES.map((z) => z.id));
@@ -625,10 +596,11 @@ function syncAdminFields() {
 
 async function handleAdminSubmit(event) {
   event.preventDefault();
+
   const payload = {
-    id: els.staffSelect.value,
-    status: els.statusInput.value.trim(),
-    zoneId: els.zoneSelect.value
+    id: els.staffSelect?.value,
+    status: els.statusInput?.value.trim() || '',
+    zoneId: els.zoneSelect?.value || 'governance'
   };
 
   try {
@@ -659,6 +631,7 @@ async function handleSimulate() {
 
 async function handleReset() {
   if (!confirm('Reset dữ liệu về seed mặc định?')) return;
+
   try {
     await api('/api/reset', {
       method: 'POST',
@@ -682,11 +655,14 @@ async function api(path, options = {}) {
   if (!API_BASE || API_BASE.includes('YOUR-WORKER')) {
     throw new Error('Chưa cấu hình API_BASE trong index.html');
   }
+
   const response = await fetch(`${API_BASE}${path}`, options);
   const data = await response.json().catch(() => ({}));
+
   if (!response.ok || data.ok === false) {
     throw new Error(data.error || `HTTP ${response.status}`);
   }
+
   return data;
 }
 
@@ -700,11 +676,16 @@ function zoneForStaff(person) {
     warroom: 'War Room',
     relax: 'Relax'
   };
-  return state.zones.find((item) => normalizeZoneId(item.id) === zoneId) || { x: 50, y: 50, name: builtinNames[zoneId] || person.zoneId };
+
+  return state?.zones?.find((item) => normalizeZoneId(item.id) === zoneId) || {
+    x: 50,
+    y: 50,
+    name: builtinNames[zoneId] || person.zoneId
+  };
 }
 
 function projectForStaff(staffId) {
-  return state.projects.find((item) => item.ownerId === staffId || item.contributors.includes(staffId));
+  return state?.projects?.find((item) => item.ownerId === staffId || (Array.isArray(item.contributors) && item.contributors.includes(staffId)));
 }
 
 function projectLabel(staffId) {
