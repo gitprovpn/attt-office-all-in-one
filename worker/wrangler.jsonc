@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "attt-office-worker",
+  "name": "attt-office-all-in-one",
   "main": "src/worker.js",
   "compatibility_date": "2026-03-31",
   "kv_namespaces": [
