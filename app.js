@@ -228,25 +228,74 @@ function assignRoomSlots(staff) {
 
   for (const [zoneKey, people] of grouped.entries()) {
     const slots = ROOM_SLOTS[zoneKey] || ROOM_SLOTS.default;
-    const sortedPeople = [...people].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    const sortedPeople = [...people].sort((a, b) =>
+      a.name.localeCompare(b.name, 'vi')
+    );
 
     sortedPeople.forEach((person, index) => {
       const slot = slots[index % slots.length] || ROOM_SLOTS.default[0];
-      const overflowRow = Math.floor(index / slots.length);
-      const offsetY = overflowRow * 4.8;
-      const offsetX = overflowRow * (index % 2 === 0 ? -2.4 : 2.4);
-      const behaviorZoneId = resolveBehaviorZone(person);
 
       positioned.push({
         ...person,
-        behaviorZoneId,
         roomSlotIndex: index % slots.length,
-        targetX: slot.x + offsetX,
-        targetY: slot.y + offsetY,
+        targetX: slot.x,
+        targetY: slot.y,
         facing: slot.facing
       });
     });
   }
+
+  return positioned;
+}
+
+function resolveBehaviorZone(person) {
+  const project = projectForStaff(person.id);
+
+  const text = [
+    person.status,
+    project?.name,
+    project?.type,
+    project?.stage,
+    project?.description,
+    project?.health
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  // 🔴 WAR ROOM
+  if (/(critical|incident|sev|urgent|breach|p1|p0)/.test(text)) {
+    return 'warroom';
+  }
+
+  // 🟥 RED TEAM
+  if (/(pentest|redteam|attack|exploit|phishing)/.test(text)) {
+    return 'redteam';
+  }
+
+  // 🛡 DEFENSE
+  if (/(soc|monitor|remediation|vulnerability|siem|edr)/.test(text)) {
+    return 'defense';
+  }
+
+  // 📋 AUDIT
+  if (/(audit|stage ?2|evidence|checklist|review)/.test(text)) {
+    return 'audit';
+  }
+
+  // 🧠 GOVERNANCE
+  if (/(policy|risk|iso|isms|procedure|soa)/.test(text)) {
+    return 'governance';
+  }
+
+  // 🟢 RELAX
+  if (/(idle|done|waiting|break|relax|nghi|xong)/.test(text)) {
+    return 'relax';
+  }
+
+  // fallback
+  return person.zoneId || 'relax';
+}
 
   return positioned;
 }
