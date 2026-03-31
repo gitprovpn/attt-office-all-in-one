@@ -595,25 +595,28 @@ function renderProjectList() {
   }).join('');
 }
 
+// function renderMessages() {
+  // if (!els.messageList || !state) return;
+
+  // els.messageList.innerHTML = state.messages.slice(0, 8).map((message) => {
+    // const from = state.staff.find((item) => item.id === message.from);
+    // const to = state.staff.find((item) => item.id === message.to);
+    // const project = state.projects.find((item) => item.id === message.projectId);
+
+    // return `
+      // <article class="message-card">
+        // <div class="message-card-head">${escapeHtml(from ? from.name : message.from)} → ${escapeHtml(to ? to.name : message.to)}</div>
+        // <p>${escapeHtml(message.text || '')}</p>
+        // <div class="message-meta">
+          // ${project ? `<span class="tag">${escapeHtml(project.name)}</span>` : ''}
+          // <span class="tag">${formatDateTime(message.createdAt)}</span>
+        // </div>
+      // </article>
+    // `;
+  // }).join('');
+// }
 function renderMessages() {
-  if (!els.messageList || !state) return;
-
-  els.messageList.innerHTML = state.messages.slice(0, 8).map((message) => {
-    const from = state.staff.find((item) => item.id === message.from);
-    const to = state.staff.find((item) => item.id === message.to);
-    const project = state.projects.find((item) => item.id === message.projectId);
-
-    return `
-      <article class="message-card">
-        <div class="message-card-head">${escapeHtml(from ? from.name : message.from)} → ${escapeHtml(to ? to.name : message.to)}</div>
-        <p>${escapeHtml(message.text || '')}</p>
-        <div class="message-meta">
-          ${project ? `<span class="tag">${escapeHtml(project.name)}</span>` : ''}
-          <span class="tag">${formatDateTime(message.createdAt)}</span>
-        </div>
-      </article>
-    `;
-  }).join('');
+  return;
 }
 
 function renderStaffOptions() {
